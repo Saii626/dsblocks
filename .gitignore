@@ -6,3 +6,5 @@ blocks/*.o
 dsblocks
 sigdsblocks/sigdsblocks
 xgetrootname/xgetrootname
+
+Session.vim
