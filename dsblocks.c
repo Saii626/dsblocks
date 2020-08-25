@@ -1,9 +1,11 @@
 #include <errno.h>
 #include <fcntl.h>
+#include <pthread.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 #include <X11/Xlib.h>
 
@@ -12,28 +14,23 @@
 #define STTLENGTH                       256
 #define LOCKFILE                        "/tmp/dsblocks.pid"
 
-typedef struct {
-        void (*funcu)(char *str, int sigval);
-        void (*funcc)(int button);
-        const int interval;
-        const int signal;
-        char cmdoutcur[CMDLENGTH];
-        char cmdoutprv[CMDLENGTH];
-} Block;
-
 #include "blocks.h"
+#include "taskqueue.h"
 
 static void buttonhandler(int signal, siginfo_t *si, void *ucontext);
 static void setroot();
 static void setupsignals();
 static void sighandler(int signal, siginfo_t *si, void *ucontext);
 static void statusloop();
+static void executeblock(void* block);
 static void termhandler(int signum);
 static int updatestatus();
 static void writepid();
 
 Display *dpy;
 pid_t pid;
+
+static pthread_mutex_t task_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static int statuscontinue = 1;
 static char statusstr[STTLENGTH];
@@ -117,28 +114,64 @@ sighandler(int signal, siginfo_t *si, void *ucontext)
 void
 statusloop()
 {
-        int i;
+	time_t curr_time;
+	time(&curr_time);
 
         /* first run */
         sigprocmask(SIG_BLOCK, &blocksigmask, NULL);
-        for (Block *current = blocks; current->funcu; current++)
+	pthread_mutex_lock(&task_mutex);
+        for (Block *current = blocks; current->funcu; current++) {
                 if (current->interval >= 0)
                         current->funcu(current->cmdoutcur, NILL);
+
+		if (current->interval > 0) {
+			Task* task = (Task*) malloc(sizeof(Task));
+			task->task = executeblock;
+			task->arg = current;
+			task->interval = current->interval;
+			task->time = curr_time + current->interval;
+			add_task(task);
+		}
+	}
+	pthread_mutex_unlock(&task_mutex);
         setroot();
         sigprocmask(SIG_UNBLOCK, &blocksigmask, NULL);
-        sleep(SLEEPINTERVAL);
-        i = SLEEPINTERVAL;
+
         /* main loop */
         while (statuscontinue) {
-                sigprocmask(SIG_BLOCK, &blocksigmask, NULL);
-                for (Block *current = blocks; current->funcu; current++)
-                        if (current->interval > 0 && i % current->interval == 0)
-                                current->funcu(current->cmdoutcur, NILL);
-                setroot();
-                sigprocmask(SIG_UNBLOCK, &blocksigmask, NULL);
-                sleep(SLEEPINTERVAL);
-                i += SLEEPINTERVAL;
-        }
+		time(&curr_time);
+
+		Task* to_run = peek_task();
+
+		if (to_run->time > curr_time) {
+			while (sleep(to_run->time - curr_time) > 0 && to_run == peek_task()) {
+				time(&curr_time);
+			}
+		}
+
+		if (to_run == peek_task()) {
+			pthread_mutex_lock(&task_mutex);
+			to_run = pop_task();
+			pthread_mutex_unlock(&task_mutex);
+
+			sigprocmask(SIG_BLOCK, &blocksigmask, NULL);
+			to_run->task(to_run->arg);
+			setroot();
+			sigprocmask(SIG_UNBLOCK, &blocksigmask, NULL);
+
+			time(&curr_time);
+			pthread_mutex_lock(&task_mutex);
+			to_run->time = curr_time + to_run->interval;
+			add_task(to_run);
+			pthread_mutex_unlock(&task_mutex);
+		}
+	}
+}
+
+void
+executeblock(void* block) {
+	Block* blk = (Block*) block;
+	blk->funcu(blk->cmdoutcur, NILL);
 }
 
 void
@@ -274,6 +307,28 @@ writepid()
         }
 }
 
+void* acpi_handler(void* ptr) {
+	Block* volBlock = (Block*) ptr;
+	volBlock->funcu(volBlock->cmdoutcur, NILL);
+	return NULL;
+}
+
+//void
+//spawnacpihandler() {
+//	pthread_t acpilistener;
+//
+//	Block* volBlock;
+//	for (Block *current = blocks; current->funcu; current++) {
+//		if (current->signal == VOLUME_SIGNAL) {
+//			volBlock = current;
+//			break;
+//		}
+//	}
+//
+//	pthread_create(&acpilistener, NULL, acpi_handler, volBlock);
+//}
+
+
 int
 main(int argc, char *argv[])
 {
@@ -287,6 +342,7 @@ main(int argc, char *argv[])
                 fputs("Error: could not open display.\n", stderr);
                 return 1;
         }
+	//spawnacpihandler();
         sigemptyset(&blocksigmask);
         sigaddset(&blocksigmask, SIGHUP);
         sigaddset(&blocksigmask, SIGINT);

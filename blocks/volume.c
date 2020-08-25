@@ -1,10 +1,11 @@
 #include <stdio.h>
+#include <string.h>
 
 #include "../util.h"
 #include "volume.h"
 
-#define ICON0                           COL1 "" COL0
-#define ICON1                           COL1 "'" COL0
+//#define ICON0                           COL1 "" COL0
+//#define ICON1                           COL1 "'" COL0
 
 #define BUFLENGTH                       10
 
@@ -22,10 +23,19 @@ volumeu(char *str, int sigval)
 
         buf[getcmdout(PAMIXER, buf, BUFLENGTH) - 1] = '\0';
         if (buf[0] == '1') /* output was 1 */
-                snprintf(str, CMDLENGTH, ICON0 " --- ");
+		snprintf(str, CMDLENGTH,  "  --- ");
         else {/* output was `0' */
 		buf[getcmdout(GETVOL, buf, BUFLENGTH) - 1] = '\0';
-                snprintf(str, CMDLENGTH, ICON1 "%s%%", buf);
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wimplicit-function-declaration"
+		char *pos = strchr(buf, ' ');
+#pragma GCC diagnostic pop
+
+		if (pos) {
+			int posi = pos - buf;
+			snprintf(str, CMDLENGTH, "   %s ", buf+posi+1);
+		}
 	}
 }
 

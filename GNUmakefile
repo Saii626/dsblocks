@@ -11,8 +11,11 @@ BLOCKS := $(wildcard blocks/*.c)
 
 all: dsblocks sigdsblocks/sigdsblocks xgetrootname/xgetrootname
 
-dsblocks.o: dsblocks.c blocks.h shared.h
+dsblocks.o: dsblocks.c blocks.h shared.h taskqueue.h
 	${CC} -o $@ -c ${CFLAGS} -Wno-missing-field-initializers -Wno-unused-parameter ${X11CFLAGS} $<
+
+taskqueue.o: taskqueue.c taskqueue.h
+	${CC} -o $@ -c ${CFLAGS} -Wno-missing-field-initializers -Wno-unused-parameter $<
 
 util.o: util.c util.h shared.h
 	${CC} -o $@ -c ${CFLAGS} ${X11CFLAGS} $<
@@ -20,7 +23,7 @@ util.o: util.c util.h shared.h
 blocks/%.o: blocks/%.c blocks/%.h util.h shared.h
 	${CC} -o $@ -c ${CFLAGS} -Wno-unused-parameter $<
 
-dsblocks: dsblocks.o util.o ${BLOCKS:c=o}
+dsblocks: dsblocks.o util.o taskqueue.o ${BLOCKS:c=o}
 	${CC} -o $@ $^ ${X11LIBS}
 
 sigdsblocks/sigdsblocks: sigdsblocks/sigdsblocks.c

@@ -1,5 +1,3 @@
-#define SLEEPINTERVAL                   2
-
 #include "blocks/battery.h"
 #include "blocks/cputemp.h"
 #include "blocks/calendar.h"
@@ -7,6 +5,7 @@
 #include "blocks/mail.h"
 #include "blocks/time.h"
 #include "blocks/volume.h"
+#include "shared.h"
 
 /* If interval of a block is set to 0, the block will only be updated once at startup.
  * If interval is set to a negative value, the block will never be updated in the main loop.
@@ -17,11 +16,23 @@
 /* funcu - function responsible for updating what is shown on the status
  * funcc - function responsible for handling clicks on the block */
 
+#define VOLUME_SIGNAL 1
+
+typedef struct {
+        void (*funcu)(char *str, int sigval);
+        void (*funcc)(int button);
+        const int interval;
+        const int signal;
+        char cmdoutcur[CMDLENGTH];
+        char cmdoutprv[CMDLENGTH];
+} Block;
+
+
 static Block blocks[] = {
 /*      funcu                   funcc                   interval        signal */
         { timeu,                NULL,                   30,             10 },
 
-        { volumeu,              volumec,                0,              1 },
+        { volumeu,              volumec,                0,              VOLUME_SIGNAL },
 
         { NULL } /* just to mark the end of the array */
 };
